@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>小店掌櫃：分類購物挑戰</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fff9f0;
+            touch-action: manipulation;
+            -webkit-touch-callout: none; /* 停用長按選單 */
+        }
+        .shelf-item {
+            cursor: grab;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            /* 這是防呆關鍵：讓手指摸到商品時，螢幕絕對不會跟著上下滑動 */
+            touch-action: none; 
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .shelf-item:hover {
+            transform: translateY(-8px);
+        }
+        .shelf-item:active {
+            cursor: grabbing;
+            transform: scale(1.05);
+        }
+        .basket-section {
+            min-height: 120px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 1.5rem;
+            padding: 1rem;
+            border: 2px dashed #fecdd3;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-content: flex-start;
+        }
+        .drag-over {
+            background-color: #fff1f2;
+            border-color: #fb7185;
+        }
+        .item-in-basket {
+            cursor: pointer;
+            position: relative;
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: transform 0.2s;
+            touch-action: none;
+        }
+        
+        .item-in-basket::after {
+            content: "×";
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ff5e78;
+            color: white;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 10;
+            opacity: 0; 
+            transition: opacity 0.2s;
+        }
+        
+        @media (hover: hover) {
+            .item-in-basket:hover::after { opacity: 1; }
+            .item-in-basket:hover { transform: scale(1.1); }
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+        .price-tag {
+            background: #ff7e67;
+            color: white;
+            padding: 4px 16px;
+            border-radius: 24px;
+            font-weight: 900;
+            font-size: 1.25rem;
+            box-shadow: 0 6px 0px #e66a55;
+            margin-top: 12px;
+            display: inline-block;
+        }
+        .custom-card {
+            border-radius: 2rem;
+            border-bottom: 10px solid #e2e8f0;
+        }
+        .receipt-card {
+            background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+            border-radius: 2rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+            <div class="text-center md:text-left">
+                <h1 class="text-4xl font-black text-rose-500 drop-shadow-sm">🍓 小店掌櫃：分類購物</h1>
+                <p class="text-gray-500 mt-2 font-medium">拖曳貨品到籃子，點擊籃中物件可刪除！</p>
+            </div>
+            <div class="bg-white border-4 border-rose-200 px-8 py-4 rounded-3xl shadow-sm text-center transform rotate-2">
+                <p class="text-rose-400 font-bold text-xs uppercase tracking-widest mb-1">錢包餘額</p>
+                <p id="wallet-balance" class="text-4xl font-black text-rose-500 font-mono">$500</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <div class="lg:col-span-3 space-y-6">
+                <div class="bg-white p-6 custom-card shadow-xl border-gray-100">
+                    <h2 class="text-xl font-black text-gray-700 mb-6 flex items-center">
+                        <span class="mr-2 text-2xl">🍬</span> 可愛貨架
+                    </h2>
+                    
+                    <div class="flex flex-col gap-8">
+                        <div class="flex flex-col items-center p-6 bg-orange-50 rounded-[2.5rem] border-2 border-orange-100 shelf-item" 
+                             data-type="book">
+                            <div class="w-32 h-32 mb-2">
+                                <svg viewBox="0 0 100 100" class="w-full h-full pointer-events-none">
+                                    <path d="M20 25 Q20 20 25 20 H75 Q80 20 80 25 V75 Q80 80 75 80 H25 Q20 80 20 75 Z" fill="#ffb347" />
+                                    <path d="M25 20 H75 V80 H25 Z" fill="#ffcc33" />
+                                    <circle cx="50" cy="45" r="12" fill="#fff" opacity="0.8" />
+                                    <path d="M42 45 Q50 52 58 45" fill="none" stroke="#ed8936" stroke-width="3" stroke-linecap="round" />
+                                    <rect x="35" y="65" width="30" height="4" rx="2" fill="#fff" opacity="0.6"/>
+                                </svg>
+                            </div>
+                            <span class="font-black text-orange-700 text-xl pointer-events-none">童話繪本</span>
+                            <div class="price-tag pointer-events-none">$100</div>
+                        </div>
+
+                        <div class="flex flex-col items-center p-6 bg-pink-50 rounded-[2.5rem] border-2 border-pink-100 shelf-item" 
+                             data-type="stapler">
+                            <div class="w-32 h-32 mb-2">
+                                <svg viewBox="0 0 100 100" class="w-full h-full pointer-events-none">
+                                    <rect x="20" y="65" width="60" height="15" rx="7" fill="#fda4af" />
+                                    <path d="M25 65 L75 65 L70 35 Q68 30 60 30 L30 30 Q22 30 25 65" fill="#f43f5e" />
+                                    <circle cx="35" cy="45" r="3" fill="#fff" />
+                                    <rect x="45" y="38" width="15" height="4" rx="2" fill="#fff" opacity="0.4" />
+                                </svg>
+                            </div>
+                            <span class="font-black text-rose-700 text-xl pointer-events-none">粉紅小釘</span>
+                            <div class="price-tag pointer-events-none">$50</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-5">
+                <div id="basket-container" class="bg-white p-6 rounded-[2.5rem] shadow-2xl h-full flex flex-col border-b-[12px] border-rose-100 transition-colors duration-200">
+                    
+                    <h2 class="text-2xl font-black text-gray-700 mb-6 flex justify-between items-center px-2">
+                        <span>🧺 魔法籃子 (分類展示)</span>
+                        <button onclick="resetGame()" class="text-sm bg-gray-100 hover:bg-rose-100 text-gray-500 hover:text-rose-500 py-2 px-5 rounded-full transition-all">清空</button>
+                    </h2>
+                    
+                    <div class="space-y-6 flex-1">
+                        <div>
+                            <h3 class="text-orange-500 font-black mb-2 flex items-center px-2">
+                                <span class="mr-2">📖</span> 繪本區
+                            </h3>
+                            <div id="basket-books" class="basket-section pointer-events-none">
+                                <div class="w-full text-center py-4 text-orange-200 font-bold">尚未選購繪本</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 class="text-rose-500 font-black mb-2 flex items-center px-2">
+                                <span class="mr-2">📎</span> 工具區
+                            </h3>
+                            <div id="basket-staplers" class="basket-section pointer-events-none">
+                                <div class="w-full text-center py-4 text-rose-200 font-bold">尚未選購工具</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="basket-hint" class="mt-4 text-center text-rose-300 font-bold text-sm">
+                        * 點擊籃中物件可將其移除 *
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-4 space-y-6">
+                <div class="bg-white p-6 custom-card shadow-lg border-rose-50">
+                    <h2 class="text-xl font-black text-gray-700 mb-4">✅ 購物目標：</h2>
+                    <ul class="space-y-4 font-bold">
+                        <li id="check-book" class="condition-unmet flex items-center text-xl transition-all">
+                            <span class="status-icon mr-3 text-3xl">⚪</span> 買一本童話書
+                        </li>
+                        <li id="check-stapler" class="condition-unmet flex items-center text-xl transition-all">
+                            <span class="status-icon mr-3 text-3xl">⚪</span> 買一個釘書機
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="receipt-card text-white p-8 shadow-2xl flex flex-col border-b-[12px] border-indigo-900">
+                    <h2 class="text-2xl font-black tracking-tighter text-indigo-100 mb-8 border-b border-indigo-400 pb-4 italic">CHECKOUT</h2>
+                    
+                    <div class="space-y-8 flex-grow">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <p class="text-indigo-200 text-xs font-bold uppercase tracking-widest">童話繪本</p>
+                                <p class="text-3xl font-black">× <span id="count-book">0</span></p>
+                            </div>
+                            <p class="text-3xl font-black font-mono text-indigo-100" id="subtotal-book">$0</p>
+                        </div>
+
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <p class="text-indigo-200 text-xs font-bold uppercase tracking-widest">粉紅小釘</p>
+                                <p class="text-3xl font-black">× <span id="count-stapler">0</span></p>
+                            </div>
+                            <p class="text-3xl font-black font-mono text-indigo-100" id="subtotal-stapler">$0</p>
+                        </div>
+
+                        <div class="pt-6 border-t-2 border-dashed border-indigo-400/50">
+                            <div class="flex justify-between items-center">
+                                <span class="text-indigo-200 font-bold text-lg">總額</span>
+                                <span class="text-5xl font-black text-yellow-300 font-mono drop-shadow-md" id="total-price">$0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="msg-box" class="mt-8 p-5 rounded-3xl text-center text-lg font-black transition-all duration-300 bg-indigo-800/50 text-indigo-100 min-h-[100px] flex items-center justify-center border-2 border-indigo-400/20">
+                        <span id="msg-text">開始挑選喜歡的東西吧！</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PRICES = { book: 100, stapler: 50 };
+        const BUDGET = 500;
+        let basket = { book: 0, stapler: 0 };
+
+        /* =========================================
+           全新：自訂 Pointer Events 拖放系統 (完美支援 iPhone)
+        ========================================= */
+        let activeClone = null;
+        let draggedType = null;
+        const basketContainer = document.getElementById('basket-container');
+
+        document.querySelectorAll('.shelf-item').forEach(item => {
+            item.addEventListener('pointerdown', startDrag);
+        });
+
+        function startDrag(e) {
+            // 確保只有單指觸控或滑鼠左鍵才會觸發
+            if (!e.isPrimary) return; 
+            
+            const item = e.currentTarget;
+            draggedType = item.getAttribute('data-type');
+            
+            // 複製一個「幽靈」物件跟著手指
+            activeClone = item.cloneNode(true);
+            activeClone.style.position = 'fixed';
+            activeClone.style.zIndex = '9999';
+            activeClone.style.pointerEvents = 'none'; // 讓程式能「穿透」它看到後面的籃子
+            activeClone.style.opacity = '0.9';
+            activeClone.style.margin = '0';
+            activeClone.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2)';
+            
+            // 抓取原本的大小
+            const rect = item.getBoundingClientRect();
+            activeClone.style.width = rect.width + 'px';
+            activeClone.style.height = rect.height + 'px';
+            
+            document.body.appendChild(activeClone);
+            
+            // 把幽靈物件移到手指位置
+            moveClone(e.clientX, e.clientY);
+            
+            // 原本的商品變半透明
+            item.style.opacity = '0.4';
+            
+            // 監聽全螢幕的手指滑動與放開事件
+            document.addEventListener('pointermove', dragMove, { passive: false });
+            document.addEventListener('pointerup', endDrag);
+            document.addEventListener('pointercancel', endDrag);
+        }
+
+        function moveClone(x, y) {
+            if (!activeClone) return;
+            // 讓影子置中於手指
+            activeClone.style.left = (x - activeClone.offsetWidth / 2) + 'px';
+            activeClone.style.top = (y - activeClone.offsetHeight / 2) + 'px';
+        }
+
+        function dragMove(e) {
+            if (!activeClone) return;
+            e.preventDefault(); // 非常重要：阻止 iPhone 滑動螢幕！
+            
+            moveClone(e.clientX, e.clientY);
+            
+            // 偵測手指底下是不是籃子
+            const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+            if (basketContainer.contains(elementBelow)) {
+                basketContainer.classList.add('bg-rose-50', 'border-rose-300');
+            } else {
+                basketContainer.classList.remove('bg-rose-50', 'border-rose-300');
+            }
+        }
+
+        function endDrag(e) {
+            if (!activeClone) return;
+            
+            // 放開手指時，檢查是否在籃子區域
+            const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
+            if (basketContainer.contains(elementBelow)) {
+                tryAddItem(draggedType); // 成功丟入！
+            }
+            
+            // 視覺復原
+            basketContainer.classList.remove('bg-rose-50', 'border-rose-300');
+            document.querySelectorAll('.shelf-item').forEach(i => i.style.opacity = '1');
+            
+            // 銷毀影子與清除事件
+            activeClone.remove();
+            activeClone = null;
+            draggedType = null;
+            
+            document.removeEventListener('pointermove', dragMove);
+            document.removeEventListener('pointerup', endDrag);
+            document.removeEventListener('pointercancel', endDrag);
+        }
+
+        /* =========================================
+           遊戲邏輯區塊
+        ========================================= */
+        function tryAddItem(type) {
+            const currentTotal = (basket.book * PRICES.book) + (basket.stapler * PRICES.stapler);
+            if (currentTotal + PRICES[type] > BUDGET) {
+                triggerWarning("❌ 錢包不夠錢了喔！");
+                return;
+            }
+            basket[type]++;
+            renderBasketItems();
+            updateUI();
+        }
+
+        function removeItem(type) {
+            if (basket[type] > 0) {
+                basket[type]--;
+                renderBasketItems();
+                updateUI();
+            }
+        }
+
+        function renderBasketItems() {
+            const bookDiv = document.getElementById('basket-books');
+            const staplerDiv = document.getElementById('basket-staplers');
+            
+            bookDiv.innerHTML = '';
+            if (basket.book === 0) {
+                bookDiv.innerHTML = `<div class="w-full text-center py-4 text-orange-200 font-bold pointer-events-none">尚未選購繪本</div>`;
+            } else {
+                for (let i = 0; i < basket.book; i++) {
+                    bookDiv.appendChild(createItemElement('book'));
+                }
+            }
+
+            staplerDiv.innerHTML = '';
+            if (basket.stapler === 0) {
+                staplerDiv.innerHTML = `<div class="w-full text-center py-4 text-rose-200 font-bold pointer-events-none">尚未選購工具</div>`;
+            } else {
+                for (let i = 0; i < basket.stapler; i++) {
+                    staplerDiv.appendChild(createItemElement('stapler'));
+                }
+            }
+        }
+
+        function createItemElement(type) {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'item-in-basket w-24 h-24 bg-white rounded-3xl shadow-md border-2 border-rose-50 p-3 flex items-center justify-center pointer-events-auto';
+            
+            // 支援 iPhone 神速點擊刪除，不卡頓
+            itemDiv.onpointerdown = (e) => {
+                e.preventDefault();
+                removeItem(type);
+            };
+            
+            if (type === 'book') {
+                itemDiv.innerHTML = `<svg viewBox="0 0 100 100" class="w-full h-full pointer-events-none">
+                    <path d="M20 25 Q20 20 25 20 H75 Q80 20 80 25 V75 Q80 80 75 80 H25 Q20 80 20 75 Z" fill="#ffcc33" />
+                    <circle cx="50" cy="45" r="10" fill="#fff" opacity="0.8" />
+                </svg>`;
+            } else {
+                itemDiv.innerHTML = `<svg viewBox="0 0 100 100" class="w-full h-full pointer-events-none">
+                    <rect x="20" y="65" width="60" height="15" rx="7" fill="#fda4af" />
+                    <path d="M25 65 L75 65 L70 35 Q68 30 60 30 L30 30 Q22 30 25 65" fill="#f43f5e" />
+                </svg>`;
+            }
+            return itemDiv;
+        }
+
+        function triggerWarning(text) {
+            const msgBox = document.getElementById('msg-box');
+            basketContainer.classList.add('shake', 'border-red-400');
+            setTimeout(() => basketContainer.classList.remove('shake', 'border-red-400'), 500);
+            msgBox.className = "mt-8 p-5 rounded-3xl text-center text-lg font-black bg-rose-500 text-white min-h-[100px] flex items-center justify-center shadow-lg border-2 border-rose-300";
+            document.getElementById('msg-text').innerText = text;
+            setTimeout(updateUI, 2000);
+        }
+
+        function updateUI() {
+            const total = (basket.book * PRICES.book) + (basket.stapler * PRICES.stapler);
+            const balance = BUDGET - total;
+
+            document.getElementById('count-book').innerText = basket.book;
+            document.getElementById('count-stapler').innerText = basket.stapler;
+            document.getElementById('subtotal-book').innerText = `$${basket.book * PRICES.book}`;
+            document.getElementById('subtotal-stapler').innerText = `$${basket.stapler * PRICES.stapler}`;
+            document.getElementById('total-price').innerText = `$${total}`;
+            document.getElementById('wallet-balance').innerText = `$${balance}`;
+
+            updateRequirementCheck('check-book', basket.book >= 1);
+            updateRequirementCheck('check-stapler', basket.stapler >= 1);
+
+            const msgBox = document.getElementById('msg-box');
+            const msgText = document.getElementById('msg-text');
+            const hasBoth = basket.book >= 1 && basket.stapler >= 1;
+
+            if (total === 0) {
+                msgBox.className = "mt-8 p-5 rounded-3xl text-center text-lg font-black bg-indigo-800/50 text-indigo-100 min-h-[100px] flex items-center justify-center border-2 border-indigo-400/20";
+                msgText.innerText = "開始挑選喜歡的東西吧！";
+            } else if (!hasBoth) {
+                msgBox.className = "mt-8 p-5 rounded-3xl text-center text-lg font-black bg-amber-400 text-amber-900 min-h-[100px] flex items-center justify-center shadow-md border-2 border-amber-300";
+                msgText.innerText = "💡 別忘了兩種都要買喔！";
+            } else if (total === BUDGET) {
+                msgBox.className = "mt-8 p-5 rounded-3xl text-center text-lg font-black bg-emerald-500 text-white min-h-[100px] flex items-center justify-center shadow-lg border-2 border-emerald-300";
+                msgText.innerText = "⭐ 太厲害了！剛好用完 500 元！";
+            } else {
+                msgBox.className = "mt-8 p-5 rounded-3xl text-center text-lg font-black bg-indigo-500 text-white min-h-[100px] flex items-center justify-center shadow-md border-2 border-indigo-300";
+                msgText.innerText = `符合規則！餘額：$${balance}`;
+            }
+        }
+
+        function updateRequirementCheck(id, isMet) {
+            const el = document.getElementById(id);
+            el.className = isMet ? "condition-met flex items-center text-emerald-500 text-2xl font-black" : "condition-unmet flex items-center text-gray-300 text-2xl font-black";
+            el.querySelector('.status-icon').innerText = isMet ? "⭐" : "⚪";
+        }
+
+        function resetGame() {
+            basket = { book: 0, stapler: 0 };
+            renderBasketItems();
+            updateUI();
+        }
+
+        renderBasketItems();
+        updateUI();
+    </script>
+</body>
+</html>
